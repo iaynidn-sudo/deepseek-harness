@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>正在更新</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
+      color: #e2e8f0;
+      font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      height: 100vh; user-select: none;
+    }
+    .logo {
+      width: 56px; height: 56px; border-radius: 14px;
+      background: linear-gradient(135deg, #122866 0%, #2563eb 100%);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px; font-weight: 800; color: #fff; margin-bottom: 18px;
+      box-shadow: 0 10px 30px rgba(37,99,235,.5);
+      letter-spacing: -2px;
+    }
+    h1 { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
+    .sub { font-size: 12px; color: #94a3b8; margin-bottom: 24px; }
+    .spinner {
+      width: 30px; height: 30px; border: 3px solid rgba(255,255,255,.18);
+      border-top-color: #60a5fa; border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+      margin-bottom: 20px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .status { font-size: 13px; color: #cbd5e1; min-height: 20px; text-align: center; }
+    .detail { font-size: 12px; color: #64748b; margin-top: 8px; min-height: 16px; text-align: center; }
+    .err {
+      display: none; max-width: 340px; margin-top: 14px; padding: 10px 14px;
+      background: rgba(239,68,68,.15); border: 1px solid rgba(239,68,68,.4);
+      color: #fca5a5; border-radius: 8px; font-size: 12px; line-height: 1.6; text-align: left;
+    }
+    button {
+      display: none; margin-top: 16px; padding: 9px 26px; border: none; border-radius: 8px;
+      background: linear-gradient(135deg, #2563eb, #1d4ed8); color: #fff;
+      font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    button:hover { opacity: .85; }
+  </style>
+</head>
+<body>
+  <div class="logo">DS</div>
+  <h1>正在更新 dsh 引擎</h1>
+  <div class="sub" id="ver"></div>
+  <div class="spinner" id="sp"></div>
+  <div class="status" id="status">准备中…</div>
+  <div class="detail" id="detail"></div>
+  <div class="err" id="err"></div>
+  <button id="closeBtn">关闭</button>
+  <script>
+    var params = new URLSearchParams(location.search);
+    document.getElementById('ver').textContent = '目标版本：v' + (params.get('version') || '?');
+
+    var STATUS_TEXT = {
+      fetch: '获取最新版本信息',
+      download: '下载更新包',
+      extract: '解压更新包',
+      install: '安装更新',
+      restart: '重启服务',
+      rollback: '回滚版本',
+      done: '完成'
+    };
+
+    function setStatus(status, detail) {
+      var sp = document.getElementById('sp');
+      var err = document.getElementById('err');
+      var btn = document.getElementById('closeBtn');
+      if (status === 'error') {
+        sp.style.display = 'none';
+        err.style.display = 'block';
+        err.textContent = '更新失败：' + detail + '。请检查网络后稍后重试，或保持当前版本继续使用。';
+        btn.style.display = 'block';
+        return;
+      }
+      document.getElementById('status').textContent = (STATUS_TEXT[status] || status) + (detail ? '：' + detail : '…');
+    }
+
+    document.getElementById('closeBtn').addEventListener('click', function () {
+      window.close();
+    });
+  </script>
+</body>
+</html>

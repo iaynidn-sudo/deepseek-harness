@@ -65,7 +65,7 @@
     <div class="row">
       <div>
         <div class="label">启动时自动检查更新</div>
-        <div class="hint">开启后，每次启动会联网查询 @deepseek-ai/dsh 的最新版本，有新版时弹出提示。</div>
+        <div class="hint">开启后，每次启动会联网查询 @deepseek-ai/dsh 的最新版本，有新版时弹窗确认，确认后自动下载安装并重启，无需手动干预。</div>
       </div>
       <label class="switch">
         <input type="checkbox" id="autoUpdate" />
@@ -120,7 +120,7 @@
       const r = await window.dshApp.checkUpdate();
       if (r.error) { setStatus('检查失败：' + r.error, 'err'); return; }
       if (r.updateAvailable) {
-        setStatus('发现新版本！当前 ' + r.local + ' → 最新 ' + r.latest + '。点击「查看帮助」了解如何更新。', 'warn');
+        setStatus('发现新版本：当前 ' + r.local + ' → 最新 ' + r.latest + '。重启应用后会自动弹出更新确认。', 'warn');
       } else if (r.latest === 'unknown') {
         setStatus('未获取到线上版本（可能网络受限）。', 'err');
       } else {

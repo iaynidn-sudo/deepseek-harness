@@ -100,6 +100,90 @@ function fetchJson(url) {
   });
 }
 
+// 下载文件到本地（自动跟随 302 重定向，支持进度回调）
+function downloadFile(url, dest, onProgress) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, { headers: { 'Accept': 'application/octet-stream', 'User-Agent': 'ds-harness-updater' } }, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        res.resume();
+        return downloadFile(res.headers.location, dest, onProgress).then(resolve, reject);
+      }
+      if (res.statusCode !== 200) { res.resume(); return reject(new Error('HTTP ' + res.statusCode)); }
+      const total = parseInt(res.headers['content-length'] || '0', 10);
+      let received = 0;
+      const out = fs.createWriteStream(dest);
+      res.on('data', (c) => { received += c.length; if (onProgress) onProgress(received, total); });
+      res.pipe(out);
+      out.on('finish', () => resolve(dest));
+      out.on('error', reject);
+      req.on('error', reject);
+    });
+    req.setTimeout(30000, () => req.destroy(new Error('下载超时')));
+  });
+}
+
+// 解析 tar 归档（ustar 格式，支持 GNU 长文件名 / prefix）
+function parseTar(buf) {
+  const out = [];
+  let pos = 0;
+  let pendingLongName = null;
+  while (pos + 512 <= buf.length) {
+    const header = buf.slice(pos, pos + 512);
+    let name = header.slice(0, 100).toString('utf8').replace(/\0.*$/, '');
+    if (!name) break; // 零块结束
+    const sizeStr = header.slice(124, 136).toString('utf8').replace(/[^0-7]/g, '');
+    const size = parseInt(sizeStr || '0', 8);
+    const modeStr = header.slice(100, 108).toString('utf8').replace(/[^0-7]/g, '');
+    const mode = parseInt(modeStr || '0', 8);
+    const type = header[156];
+    const prefix = header.slice(345, 500).toString('utf8').replace(/\0.*$/, '');
+    const dataStart = pos + 512;
+    const dataEnd = dataStart + size;
+    if (type === 76) { // 'L' GNU 长文件名
+      pendingLongName = buf.slice(dataStart, dataEnd).toString('utf8').replace(/\0.*$/, '');
+      pos = Math.ceil(dataEnd / 512) * 512;
+      continue;
+    }
+    const fullName = pendingLongName || (prefix ? prefix + '/' + name : name);
+    pendingLongName = null;
+    if (type === 48 || type === 0) { // '0' 普通文件
+      out.push({ name: fullName, mode, type: 0, data: buf.slice(dataStart, dataEnd) });
+    } else if (type === 53) { // '5' 目录
+      out.push({ name: fullName, mode, type: 5 });
+    }
+    pos = Math.ceil(dataEnd / 512) * 512;
+  }
+  return out;
+}
+
+// 解压 tar.gz 到目录（安全：拒绝路径穿越），返回是否成功
+function extractTgz(tgzPath, destDir) {
+  return new Promise((resolve, reject) => {
+    fs.readFile(tgzPath, (err, raw) => {
+      if (err) return reject(err);
+      zlib.gunzip(raw, (gErr, data) => {
+        if (gErr) return reject(gErr);
+        try {
+          const entries = parseTar(data);
+          fs.mkdirSync(destDir, { recursive: true });
+          for (const f of entries) {
+            let rel = f.name.replace(/^package\//, ''); // npm tarball 统一 package/ 前缀
+            if (!rel) continue;
+            const parts = rel.split('/');
+            if (parts.some((p) => p === '..')) continue; // 防御路径穿越
+            const outPath = path.join(destDir, ...parts);
+            if (f.type === 5) { fs.mkdirSync(outPath, { recursive: true }); continue; }
+            fs.mkdirSync(path.dirname(outPath), { recursive: true });
+            fs.writeFileSync(outPath, f.data);
+            if (f.mode) { try { fs.chmodSync(outPath, f.mode & 0o777); } catch (e) {} }
+          }
+          resolve(destDir);
+        } catch (e) { reject(e); }
+      });
+    });
+  });
+}
+
 // Returns { updateAvailable, local, latest, error }
 async function checkUpdate() {
   const local = getLocalDshVersion();
@@ -322,6 +406,108 @@ function createHelpWindow() {
   helpWin.on('closed', () => { helpWin = null; });
 }
 
+let updateWin = null;
+let updating = false;
+
+function createUpdateWindow(latest) {
+  if (updateWin) { updateWin.show(); updateWin.focus(); return updateWin; }
+  updateWin = new BrowserWindow({
+    width: 480, height: 300, resizable: false, center: true,
+    title: '正在更新 - DeepSeek Harness',
+    parent: mainWin || undefined, modal: true,
+    webPreferences: { contextIsolation: true, nodeIntegration: false }
+  });
+  updateWin.loadFile(path.join(ROOT, 'update.html'), { query: { version: latest } });
+  updateWin.on('closed', () => { updateWin = null; });
+  return updateWin;
+}
+
+function setUpdateStatus(status, detail) {
+  if (updateWin && !updateWin.isDestroyed()) {
+    updateWin.webContents.executeJavaScript(`setStatus(${JSON.stringify(status)}, ${JSON.stringify(detail || '')})`).catch(() => {});
+  }
+}
+
+// 停止 dsh 进程并等待完全退出（Windows 上替换文件前必须）
+function stopDshAndWait() {
+  return new Promise((resolve) => {
+    if (!dshProc || dshProc.exitCode !== null) return resolve();
+    const done = () => { clearTimeout(t); resolve(); };
+    const t = setTimeout(done, 4000);
+    dshProc.once('exit', done);
+    try { dshProc.kill(); } catch (e) { done(); }
+  });
+}
+
+// 自动更新：下载 dsh 最新 tarball → 解压 → 备份替换 → 重启 dsh
+async function performAutoUpdate(latest) {
+  if (updating) return;
+  updating = true;
+  const tmpRoot = path.join(ROOT, '.update-tmp');
+  const dshDir = path.join(ROOT, 'node_modules', '@deepseek-ai', 'dsh');
+  const bakDir = path.join(ROOT, 'node_modules', '@deepseek-ai', '.dsh.bak');
+  const win = createUpdateWindow(latest);
+  try {
+    // 1. 获取最新版元数据（含 tarball 地址）
+    setUpdateStatus('fetch', '获取最新版本信息…');
+    const meta = await fetchJson(NPM_LATEST_URL);
+    const tarball = (meta.dist && meta.dist.tarball) || `https://registry.npmjs.org/@deepseek-ai/dsh/-/dsh-${latest}.tgz`;
+    const targetVersion = meta.version || latest;
+
+    // 2. 下载
+    setUpdateStatus('download', '准备下载…');
+    fs.mkdirSync(tmpRoot, { recursive: true });
+    const tgzPath = path.join(tmpRoot, 'dsh.tgz');
+    await downloadFile(tarball, tgzPath, (recv, total) => {
+      const pct = total ? Math.min(100, Math.round(recv / total * 100)) : 0;
+      setUpdateStatus('download', `下载中 ${pct}%（${(recv / 1048576).toFixed(1)} / ${(total / 1048576).toFixed(1)} MB）`);
+    });
+
+    // 3. 解压并校验版本
+    setUpdateStatus('extract', '解压更新包…');
+    const extractDir = path.join(tmpRoot, 'pkg');
+    await extractTgz(tgzPath, extractDir);
+    const pkgPath = path.join(extractDir, 'package.json');
+    if (!fs.existsSync(pkgPath)) throw new Error('更新包结构异常（缺少 package.json）');
+    const pkgVer = JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version;
+    if (pkgVer !== targetVersion) throw new Error('更新包版本校验失败（' + pkgVer + ' ≠ ' + targetVersion + '）');
+
+    // 4. 停 dsh → 备份旧包 → 替换 → 清理备份
+    setUpdateStatus('install', '安装更新…');
+    await stopDshAndWait();
+    if (fs.existsSync(bakDir)) fs.rmSync(bakDir, { recursive: true, force: true });
+    if (fs.existsSync(dshDir)) fs.renameSync(dshDir, bakDir);
+    fs.renameSync(extractDir, dshDir);
+    try { if (fs.existsSync(bakDir)) fs.rmSync(bakDir, { recursive: true, force: true }); } catch (e) { /* 残留备份无害 */ }
+    try { if (fs.existsSync(tmpRoot)) fs.rmSync(tmpRoot, { recursive: true, force: true }); } catch (e) {}
+
+    // 5. 重启 dsh
+    setUpdateStatus('restart', '正在重启 dsh 服务…');
+    dshProc = null;
+    try {
+      await startDsh();
+      await waitForDsh();
+    } catch (e) {
+      // 启动失败：回滚到旧包再试一次
+      setUpdateStatus('rollback', '启动异常，回滚到旧版本…');
+      await stopDshAndWait();
+      if (fs.existsSync(dshDir)) fs.rmSync(dshDir, { recursive: true, force: true });
+      if (fs.existsSync(bakDir)) fs.renameSync(bakDir, dshDir);
+      dshProc = null;
+      await startDsh();
+      await waitForDsh();
+    }
+    if (mainWin) { mainWin.loadURL(`http://${DSH_HOST}:${DSH_PORT}`); mainWin.show(); }
+    if (updateWin) { updateWin.close(); updateWin = null; }
+    dialog.showMessageBox({ type: 'info', title: '更新完成', message: `dsh 已更新到 v${targetVersion} 并自动重启。` });
+  } catch (e) {
+    console.error('[update] 失败:', e);
+    setUpdateStatus('error', e.message || String(e));
+  } finally {
+    updating = false;
+  }
+}
+
 async function promptUpdateIfNeeded() {
   if (!settings.autoUpdate) return;            // 用户关闭了自动更新检测
   let info;
@@ -331,14 +517,14 @@ async function promptUpdateIfNeeded() {
   const choice = dialog.showMessageBoxSync(mainWin, {
     type: 'info',
     title: '发现新版本',
-    message: `检测到 @deepseek-ai/dsh 有新版本\n\n当前：${info.local}\n最新：${info.latest}`,
-    detail: '本客户端为自包含离线包，更新需重新下载打包。是否打开更新说明页面？',
-    buttons: ['打开更新页', '忽略'],
+    message: `检测到 dsh 引擎有新版本\n\n当前：${info.local}\n最新：${info.latest}`,
+    detail: '点击「立即更新」将自动下载并安装，完成后自动重启生效，全程无需手动操作。',
+    buttons: ['立即更新', '稍后'],
     defaultId: 0,
     cancelId: 1
   });
   if (choice === 0) {
-    shell.openExternal('https://www.npmjs.com/package/@deepseek-ai/dsh');
+    performAutoUpdate(info.latest);
   }
 }
 
