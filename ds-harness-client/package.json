@@ -1,0 +1,15 @@
+{
+  "name": "ds-harness-client",
+  "version": "1.0.0",
+  "description": "Desktop client for DeepSeek Harness (dsh web) - click to launch and connect",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis"
+  },
+  "author": "WorkBuddy",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^43.4.1"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "ds-harness-app",
+  "version": "1.0.0",
+  "description": "DeepSeek Harness 桌面客户端：内置 dsh，H5 页面内嵌于原生窗口，自包含可搬运。",
+  "main": "main.js",
+  "author": "WorkBuddy",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "package": "electron-packager . ds-harness-app --platform=win32 --arch=x64 --overwrite --out=dist --icon=assets/icon.png"
+  },
+  "devDependencies": {
+    "electron": "^43.4.1",
+    "electron-packager": "^17.1.2"
+  }
+}

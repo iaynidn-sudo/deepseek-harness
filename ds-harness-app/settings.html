@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>设置 - DeepSeek Harness</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0f172a; color: #e2e8f0;
+      font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+      padding: 24px 28px; font-size: 14px;
+    }
+    h1 { font-size: 18px; margin-bottom: 4px; }
+    .desc { color: #94a3b8; font-size: 12px; margin-bottom: 22px; }
+    .card {
+      background: #1e293b; border: 1px solid #334155; border-radius: 12px;
+      padding: 16px 18px; margin-bottom: 14px;
+    }
+    .row { display: flex; align-items: center; justify-content: space-between; }
+    .row .label { font-weight: 600; }
+    .row .hint { color: #64748b; font-size: 12px; margin-top: 4px; line-height: 1.5; }
+    /* toggle switch */
+    .switch { position: relative; width: 46px; height: 26px; flex: none; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute; cursor: pointer; inset: 0; background: #475569;
+      transition: .2s; border-radius: 26px;
+    }
+    .slider:before {
+      content: ""; position: absolute; height: 20px; width: 20px; left: 3px; bottom: 3px;
+      background: #fff; transition: .2s; border-radius: 50%;
+    }
+    input:checked + .slider { background: #2563eb; }
+    input:checked + .slider:before { transform: translateX(20px); }
+    input:disabled + .slider { opacity: .5; cursor: not-allowed; }
+    label.field { display: block; font-weight: 600; margin-bottom: 8px; }
+    input[type="text"], input[type="password"] {
+      width: 100%; padding: 9px 12px; border-radius: 8px; border: 1px solid #334155;
+      background: #0f172a; color: #e2e8f0; font-size: 13px; outline: none;
+    }
+    input:focus { border-color: #2563eb; }
+    .btns { display: flex; gap: 10px; margin-top: 6px; }
+    button {
+      flex: 1; padding: 11px; border: none; border-radius: 8px; cursor: pointer;
+      font-size: 14px; font-weight: 600;
+    }
+    .primary { background: #2563eb; color: #fff; }
+    .primary:hover { background: #1d4ed8; }
+    .ghost { background: #334155; color: #e2e8f0; }
+    .ghost:hover { background: #475569; }
+    .ver { color: #64748b; font-size: 12px; margin-top: 10px; }
+    .status { font-size: 12px; margin-top: 8px; min-height: 16px; }
+    .status.ok { color: #4ade80; }
+    .status.warn { color: #fbbf24; }
+    .status.err { color: #f87171; }
+    a { color: #60a5fa; }
+  </style>
+</head>
+<body>
+  <h1>设置</h1>
+  <div class="desc">DeepSeek Harness 桌面客户端 · 自包含离线版本</div>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <div class="label">启动时自动检查更新</div>
+        <div class="hint">开启后，每次启动会联网查询 @deepseek-ai/dsh 的最新版本，有新版时弹出提示。</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="autoUpdate" />
+        <span class="slider"></span>
+      </label>
+    </div>
+  </div>
+
+  <div class="card">
+    <label class="field">DeepSeek API Key（可选）</label>
+    <input type="password" id="apiKey" placeholder="留空则使用 dsh 默认配置" autocomplete="off" />
+    <div class="hint" style="color:#64748b;font-size:12px;margin-top:6px;">
+      保存后会写入本文件夹内的 <code>.env</code> 文件，下次启动 dsh 时生效，需重启 dsh 服务。
+    </div>
+  </div>
+
+  <div class="card">
+    <label class="field">版本信息</label>
+    <div class="ver" id="verInfo">加载中…</div>
+    <div class="btns">
+      <button class="ghost" id="checkBtn">立即检查更新</button>
+    </div>
+    <div class="status" id="updateStatus"></div>
+  </div>
+
+  <div class="btns">
+    <button class="ghost" id="helpBtn">查看帮助</button>
+    <button class="primary" id="saveBtn">保存设置</button>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let current = {};
+
+    async function init() {
+      current = await window.dshApp.getSettings();
+      $('autoUpdate').checked = !!current.autoUpdate;
+      $('apiKey').value = current.apiKey || '';
+      const appV = await window.dshApp.getAppVersion();
+      const dshV = await window.dshApp.getLocalDshVersion();
+      $('verInfo').textContent = '客户端版本: ' + appV + '   内置 dsh: ' + dshV;
+    }
+
+    $('saveBtn').onclick = async () => {
+      const s = { autoUpdate: $('autoUpdate').checked, apiKey: $('apiKey').value.trim() };
+      await window.dshApp.saveSettings(s);
+      setStatus('已保存。API Key 需重启 dsh 服务后生效。', 'ok');
+    };
+
+    $('checkBtn').onclick = async () => {
+      setStatus('正在查询最新版本…', '');
+      const r = await window.dshApp.checkUpdate();
+      if (r.error) { setStatus('检查失败：' + r.error, 'err'); return; }
+      if (r.updateAvailable) {
+        setStatus('发现新版本！当前 ' + r.local + ' → 最新 ' + r.latest + '。点击「查看帮助」了解如何更新。', 'warn');
+      } else if (r.latest === 'unknown') {
+        setStatus('未获取到线上版本（可能网络受限）。', 'err');
+      } else {
+        setStatus('已是最新（' + r.local + '）。', 'ok');
+      }
+    };
+
+    $('helpBtn').onclick = () => window.dshApp.openHelp();
+
+    function setStatus(msg, cls) {
+      const el = $('updateStatus');
+      el.textContent = msg;
+      el.className = 'status ' + (cls || '');
+    }
+
+    init();
+  </script>
+</body>
+</html>

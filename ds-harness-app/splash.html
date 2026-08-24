@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DeepSeek Harness</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
+      color: #e2e8f0;
+      font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      height: 100vh; user-select: none;
+    }
+    .logo {
+      width: 80px; height: 80px; border-radius: 20px;
+      background: linear-gradient(135deg, #122866 0%, #2563eb 100%);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 28px; font-weight: 800; color: #fff; margin-bottom: 22px;
+      box-shadow: 0 10px 30px rgba(37,99,235,.5), inset 0 1px 0 rgba(255,255,255,.15);
+      letter-spacing: -2px;
+      position: relative;
+      overflow: hidden;
+    }
+    .logo::before {
+      content: ''; position: absolute; top:0; left:0; right:0; height:45%;
+      background: linear-gradient(180deg, rgba(255,255,255,.12) 0%, transparent 100%);
+      border-radius: 20px 20px 0 0;
+    }
+    h1 { font-size: 20px; font-weight: 600; margin-bottom: 6px; letter-spacing: .5px; }
+    .sub { font-size: 13px; color: #94a3b8; margin-bottom: 26px; }
+    .spinner {
+      width: 34px; height: 34px; border: 3px solid rgba(255,255,255,.18);
+      border-top-color: #60a5fa; border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .tip { font-size: 12px; color: #64748b; margin-top: 18px; }
+    .err {
+      display: none; max-width: 320px; margin-top: 16px; padding: 10px 14px;
+      background: rgba(239,68,68,.15); border: 1px solid rgba(239,68,68,.4);
+      color: #fca5a5; border-radius: 8px; font-size: 12px; line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="logo">DS</div>
+  <h1>DeepSeek Harness 客户端</h1>
+  <div class="sub">正在启动内置 dsh 服务…</div>
+  <div class="spinner" id="sp"></div>
+  <div class="tip">首次运行会联网准备运行资源，请保持网络通畅</div>
+  <div class="err" id="err"></div>
+  <script>
+    function showError(msg) {
+      document.getElementById('sp').style.display = 'none';
+      var e = document.getElementById('err');
+      e.style.display = 'block';
+      e.textContent = '启动失败：' + msg + '（请检查网络后通过托盘「重启 dsh 服务」重试）';
+    }
+  </script>
+</body>
+</html>

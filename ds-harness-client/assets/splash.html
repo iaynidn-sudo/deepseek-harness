@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DeepSeek Harness 客户端</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%;
+    background: radial-gradient(circle at 30% 20%, #1b2a4a 0%, #0f1115 60%);
+    color: #e6e6e6;
+    font-family: -apple-system, "Segoe UI", Roboto, "Microsoft YaHei", sans-serif;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    user-select: none;
+  }
+  .card { text-align: center; }
+  .logo {
+    width: 64px; height: 64px; border-radius: 14px; margin: 0 auto 18px;
+    background: linear-gradient(135deg, #2563eb, #4f8bff);
+    box-shadow: 0 8px 30px rgba(37,99,235,.45);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 28px; color: #fff; letter-spacing: -1px;
+  }
+  h1 { font-size: 19px; font-weight: 600; margin: 0 0 6px; }
+  p { font-size: 13px; color: #9fb3c8; margin: 4px 0; }
+  .spinner {
+    margin: 22px auto 0; width: 34px; height: 34px;
+    border: 3px solid rgba(255,255,255,.15);
+    border-top-color: #4f8bff; border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .tip { margin-top: 20px; font-size: 11px; color: #5b6b80; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">DS</div>
+    <h1>DeepSeek Harness 客户端</h1>
+    <p id="sub">正在启动 dsh web 服务…</p>
+    <p id="sub2">首次运行会自动通过 npm 拉取 @deepseek-ai/dsh</p>
+    <div class="spinner"></div>
+    <div class="tip" id="tip">就绪后将自动加载 http://127.0.0.1:3080</div>
+  </div>
+  <script>
+    if (location.search.indexOf('phase=install') !== -1) {
+      document.getElementById('sub').textContent = '首次运行：正在通过 npm 下载 dsh 包…';
+      document.getElementById('sub2').textContent = 'DeepSeek Harness 依赖较多，请耐心等待（可能数分钟）';
+      document.getElementById('tip').textContent = '下载完成后会自动拉起本地服务并加载界面';
+    }
+  </script>
+</body>
+</html>
