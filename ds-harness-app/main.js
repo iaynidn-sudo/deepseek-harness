@@ -152,7 +152,7 @@ function loadEnvFile(env) {
 function startDsh() {
   let nodeBin = NODE_BIN;
   if (!fs.existsSync(nodeBin)) {
-    // Mac: 尝试系统 node
+    // Mac/Linux: 尝试系统 node
     if (!IS_WIN) {
       const which = require('child_process').execSync('which node 2>/dev/null || echo ""').toString().trim();
       if (which) nodeBin = which;
@@ -161,12 +161,21 @@ function startDsh() {
   if (!fs.existsSync(nodeBin) || !fs.existsSync(DSH_BIN)) {
     return Promise.reject(new Error('未找到内置 node 或 dsh，请保持文件夹结构完整'));
   }
+  // 自愈：Mac/Linux 解压后可能丢失执行权限位，主动补 755
+  if (!IS_WIN) {
+    try { fs.chmodSync(nodeBin, 0o755); } catch (e) { /* ignore */ }
+  }
   const env = Object.assign({}, process.env);
   delete env.NODE_OPTIONS;            // strip any injected safe-delete shim
   env.DSH_HOME = DSH_HOME;
   loadEnvFile(env);                   // .env may carry DEEPSEEK_API_KEY etc.
   dshProc = spawn(nodeBin, [DSH_BIN, 'web', '--host', DSH_HOST, '--port', String(DSH_PORT)], {
     env, cwd: ROOT, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe']
+  });
+  dshProc._spawnError = null;
+  dshProc.on('error', (err) => {     // EACCES / ENOENT 等：立即记录，避免干等超时
+    dshProc._spawnError = err;
+    console.error('[dsh] spawn error:', err);
   });
   dshProc.stdout.on('data', () => {});
   dshProc.stderr.on('data', (d) => { console.error('[dsh]', d.toString()); });
@@ -178,9 +187,19 @@ function waitForDsh(timeoutMs = 180000) {
   const t0 = Date.now();
   return new Promise((resolve, reject) => {
     (function loop() {
+      // 进程 spawn 失败（如权限不足）或已退出且端口未开 → 快速失败，给出可操作的提示
+      if (dshProc) {
+        if (dshProc._spawnError) {
+          return reject(new Error('无法启动内置 node：' + dshProc._spawnError.message +
+            '（Mac 请先双击 fix-gatekeeper.command，或重新解压安装包）'));
+        }
+        if (dshProc.exitCode !== null) {
+          return reject(new Error('dsh 进程异常退出（code=' + dshProc.exitCode + '），请通过托盘「重启 dsh 服务」重试'));
+        }
+      }
       isPortOpen(DSH_PORT).then((open) => {
         if (open) return resolve(true);
-        if (Date.now() - t0 > timeoutMs) return reject(new Error('dsh 启动超时'));
+        if (Date.now() - t0 > timeoutMs) return reject(new Error('dsh 启动超时（' + (timeoutMs / 1000) + 's），请检查网络后重试'));
         setTimeout(loop, 1500);
       });
     })();
@@ -230,7 +249,7 @@ function crc32(buf) {
 // ---------------------------------------------------------------------------
 // Windows
 // ---------------------------------------------------------------------------
-function createWindow() {
+function createWindow(startErr) {
   const iconPath = ensureIcon();
   mainWin = new BrowserWindow({
     width: 1280, height: 800, minWidth: 800, minHeight: 600,
@@ -243,8 +262,26 @@ function createWindow() {
       nodeIntegration: false
     }
   });
-  mainWin.loadURL(`http://${DSH_HOST}:${DSH_PORT}`);
-  mainWin.once('ready-to-show', () => { if (mainWin) mainWin.show(); });
+  if (startErr) {
+    // dsh 未能启动：加载本地错误页，明确展示原因与解决步骤
+    mainWin.loadFile(path.join(ROOT, 'error.html'), { query: { msg: startErr.message } });
+  } else {
+    mainWin.loadURL(`http://${DSH_HOST}:${DSH_PORT}`);
+    mainWin.webContents.on('did-fail-load', (_e, _code, _desc, url) => {
+      if (url && url.startsWith('http') && mainWin) {
+        const msg = '无法连接本地 dsh 服务，请检查服务是否被占用或通过托盘「重启 dsh 服务」重试。';
+        mainWin.loadFile(path.join(ROOT, 'error.html'), { query: { msg } });
+      }
+    });
+  }
+  // 兜底：15 秒内页面未就绪也强制显示窗口（避免永远白屏/无窗口）
+  const forceShowTimer = setTimeout(() => {
+    if (mainWin && !mainWin.isVisible()) { mainWin.show(); }
+  }, 15000);
+  mainWin.once('ready-to-show', () => {
+    clearTimeout(forceShowTimer);
+    if (mainWin) mainWin.show();
+  });
   mainWin.on('closed', () => { mainWin = null; });
   mainWin.on('close', (e) => { if (!quitting) { e.preventDefault(); mainWin.hide(); } });
 }
@@ -333,7 +370,10 @@ async function restartDsh() {
     await waitForDsh();
     if (mainWin) { mainWin.show(); mainWin.loadURL(`http://${DSH_HOST}:${DSH_PORT}`); }
   } catch (e) {
-    if (mainWin) mainWin.webContents.executeJavaScript(`alert('重启 dsh 失败: ${e.message}')`).catch(() => {});
+    if (mainWin) {
+      mainWin.loadFile(path.join(ROOT, 'error.html'), { query: { msg: e.message } });
+      mainWin.show();
+    }
   }
 }
 
@@ -356,15 +396,19 @@ ipcMain.handle('check-update', () => checkUpdate());
 // ---------------------------------------------------------------------------
 async function boot() {
   const already = await isPortOpen(DSH_PORT);
+  let startErr = null;
   if (!already) {
     try {
       await startDsh();
       await waitForDsh();
     } catch (e) {
+      startErr = e;
+      console.error('[boot] dsh 启动失败:', e.message);
       if (splashWin) splashWin.webContents.executeJavaScript(`showError(${JSON.stringify(e.message)})`).catch(() => {});
+      // 关键：失败也继续 → 关闭 splash、建立主窗口（显示错误页）、托盘可用，可重试
     }
   }
-  createWindow();
+  createWindow(startErr);
   closeSplash();
   createTray();
   // 启动后异步检测版本更新（不阻塞主流程）

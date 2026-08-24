@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>启动失败 - DeepSeek Harness</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
+      color: #e2e8f0;
+      font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh;
+    }
+    .card {
+      background: rgba(15,23,42,.72);
+      border: 1px solid rgba(148,163,184,.22);
+      border-radius: 16px;
+      padding: 34px 40px;
+      max-width: 520px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.4);
+    }
+    .badge {
+      display: inline-block; padding: 3px 10px; border-radius: 20px;
+      background: rgba(239,68,68,.16); border: 1px solid rgba(239,68,68,.45);
+      color: #fca5a5; font-size: 12px; font-weight: 600; margin-bottom: 14px;
+    }
+    h1 { font-size: 19px; font-weight: 700; margin-bottom: 10px; }
+    .msg {
+      font-size: 13px; color: #fca5a5; line-height: 1.7;
+      background: rgba(239,68,68,.1); border-radius: 8px; padding: 10px 14px;
+      margin-bottom: 18px; word-break: break-all;
+    }
+    ol { margin: 0 0 20px 20px; font-size: 13px; color: #cbd5e1; line-height: 2; }
+    code {
+      background: rgba(148,163,184,.15); padding: 1px 6px; border-radius: 4px;
+      font-size: 12px; color: #93c5fd;
+    }
+    .actions { display: flex; gap: 10px; }
+    button {
+      flex: 1; padding: 10px 0; border: none; border-radius: 8px;
+      font-size: 13px; font-weight: 600; cursor: pointer;
+      transition: opacity .15s;
+    }
+    button:hover { opacity: .85; }
+    #retry { background: linear-gradient(135deg, #2563eb, #1d4ed8); color: #fff; }
+    #help { background: rgba(148,163,184,.18); color: #e2e8f0; }
+    .tip { margin-top: 16px; font-size: 12px; color: #64748b; line-height: 1.8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="badge">⚠ 启动异常</div>
+    <h1>dsh 服务未能启动</h1>
+    <div class="msg" id="msg">加载中…</div>
+    <ol>
+      <li>Mac 用户：请先双击运行 <code>fix-gatekeeper.command</code> 解除系统拦截</li>
+      <li>确认安装包解压完整（未缺文件），文件夹未被移动</li>
+      <li>首次启动需联网准备运行资源，请检查网络后点「重试」</li>
+    </ol>
+    <div class="actions">
+      <button id="retry">重试启动</button>
+      <button id="help">查看帮助</button>
+    </div>
+    <div class="tip">重试后若仍失败，可右键系统托盘图标 →「重启 dsh 服务」再次尝试。</div>
+  </div>
+  <script>
+    var msg = decodeURIComponent(new URLSearchParams(location.search).get('msg') || '未知错误');
+    document.getElementById('msg').textContent = '原因：' + msg;
+    document.getElementById('retry').addEventListener('click', function () {
+      if (window.dshApp) window.dshApp.restart();
+    });
+    document.getElementById('help').addEventListener('click', function () {
+      if (window.dshApp) window.dshApp.openHelp();
+    });
+  </script>
+</body>
+</html>
