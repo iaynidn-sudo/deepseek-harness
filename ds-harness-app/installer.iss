@@ -4,7 +4,7 @@
 ; 产物: release/DeepSeek-Harness-Setup-x64.exe
 ; ============================================================
 #define MyAppName "DeepSeek Harness"
-#define MyAppVersion "1.0.2"
+#define MyAppVersion "1.0.4"
 #define MyAppExeName "ds-harness-app.exe"
 #define MyAppPublisher "DeepSeek Harness"
 #define SourceDir "E:\Claude\DSH\ds-harness-app\dist\ds-harness-app-win32-x64"
@@ -17,7 +17,7 @@ AppId={{9D5B2E7A-6C41-4F8A-9E2B-3C17D4A8F620}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
-DefaultDirName={localappdata}\Programs\{#MyAppName}
+DefaultDirName={localappdata}\Programs\DeepSeekHarness
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir=E:\Claude\DSH\release
