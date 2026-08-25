@@ -32,5 +32,9 @@ ds-harness-portable/bin/
 .DS_Store
 Thumbs.db
 
+# --- 推广素材（抖音图文/视频等，不入源码库）---
+douyin-slides/
+generated-videos/
+
 # --- WorkBuddy 元数据 ---
 .workbuddy/
